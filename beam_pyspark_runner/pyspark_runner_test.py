@@ -36,7 +36,7 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
 
         with self.pipeline as p:
             pcoll = p | beam.Create([1]) | beam.Map(double) | beam.GroupByKey()
-            assert_that(pcoll, equal_to([(2, [1, 123])]))
+            assert_that(pcoll, equal_to([(2, [1])]))
 
     def test_create_map_and_groupby_other_thing(self):
         def double(x):
