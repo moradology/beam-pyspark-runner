@@ -17,18 +17,18 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
     def setUp(self) -> None:
         self.pipeline = test_pipeline.TestPipeline(runner=PySparkRunner())
 
-    # def test_create(self):
-    #     with self.pipeline as p:
-    #         pcoll = p | beam.Create([1])
-    #         assert_that(pcoll, equal_to([1]))
+    def test_create(self):
+        with self.pipeline as p:
+            pcoll = p | beam.Create([1])
+            assert_that(pcoll, equal_to([1]))
 
-    # def test_create_and_map(self):
-    #     def double(x):
-    #         return x * 2
+    def test_create_and_map(self):
+        def double(x):
+            return x * 2
 
-    #     with self.pipeline as p:
-    #         pcoll = p | beam.Create([1]) | beam.Map(double)
-    #         assert_that(pcoll, equal_to([2]))
+        with self.pipeline as p:
+            pcoll = p | beam.Create([1]) | beam.Map(double)
+            assert_that(pcoll, equal_to([2]))
 
     def test_create_map_and_groupby(self):
         def double(x):
@@ -36,7 +36,14 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
 
         with self.pipeline as p:
             pcoll = p | beam.Create([1]) | beam.Map(double) | beam.GroupByKey()
-            assert_that(pcoll, equal_to([(2, [1])]))
+            assert_that(pcoll, equal_to([(2, [1, 123])]))
+
+    def test_create_map_and_groupby_other_thing(self):
+        def double(x):
+            return x * 2, x
+
+        self.pipeline | beam.Create([1]) | beam.Map(double) | beam.GroupByKey() | beam.Map(lambda x: print(x))
+        self.pipeline.run()
 
 if __name__ == '__main__':
     unittest.main()

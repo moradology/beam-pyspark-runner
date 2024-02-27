@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Dict, Sequence
+from typing import Dict, Sequence, Optional
 
 from pyspark.rdd import RDD
 from pyspark.sql import SparkSession
@@ -70,6 +70,7 @@ class PySparkRunner(BundleBasedDirectRunner):
         class SparkRDDVisitor(PipelineVisitor):
             def __init__(self):
                 self.rdds: Dict[AppliedPTransform, RDD] = {}
+                self.last_rdd: Optional[RDD]
                 
             def visit_transform(self, transform_node):
                 op_class = TRANSLATIONS.get(transform_node.transform.__class__, NoOp)
@@ -92,11 +93,14 @@ class PySparkRunner(BundleBasedDirectRunner):
                     # pprint.pprint(self.rdds)
                     if len(rdd_inputs) == 1:
                         self.rdds[transform_node] = op.apply(rdd_inputs[0])
+                        self.last_rdd = op.apply(rdd_inputs[0])
                     else:
                         self.rdds[transform_node] = op.apply(rdd_inputs)
+                        self.last_rdd = op.apply(rdd_inputs)
                 
                 else:
                     self.rdds[transform_node] = op.apply(None)
+                    self.last_rdd = op.apply(None)
                         
         return SparkRDDVisitor()
 
@@ -115,7 +119,8 @@ class PySparkRunner(BundleBasedDirectRunner):
         #     print(f"TRANS: {trans}")
         #     print(f"RDD: {rdd}")
         rdds = spark_visitor.rdds.values()
-        [rdd.collect() for rdd in rdds]
+        # [rdd.collect() for rdd in rdds]
+        spark_visitor.last_rdd.collect()
         spark.stop()
         
         return PySparkRunnerResult()
