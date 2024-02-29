@@ -1,5 +1,8 @@
+import dataclasses
+from typing import Dict, List, Optional, Union
+
 from apache_beam import pvalue
-from apache_beam.pipeline import PipelineVisitor
+from apache_beam.pipeline import PipelineVisitor, AppliedPTransform
 from apache_beam.transforms.external import ExternalTransform
 
 
@@ -11,88 +14,93 @@ class VerifyNoCrossLanguageTransforms(PipelineVisitor):
                 "does not support cross-language pipelines.")
 
 
-class ConsumerTrackingPipelineVisitor(PipelineVisitor):
-    """For internal use only; no backwards-compatibility guarantees.
+@dataclasses.dataclass
+class NodeContext:
+    type: type
+    applied_transform: AppliedPTransform
+    inputs: List[pvalue.PValue]
+    side_inputs: List[pvalue.AsSideInput]
+    outputs: Dict[Union[str, int, None], pvalue.PValue]
+    parent: Optional[str]
+    input_producer_labels: List[str]
 
-    Visitor for extracting value-consumer relations from the graph.
+    def as_dict(self):
+        return {
+            "type": self.type,
+            "applied_transform": self.applied_transform,
+            "inputs": self.inputs,
+            "side_inputs": self.side_inputs,
+            "outputs": self.outputs,
+            "parent": self.parent,
+            "input_producer_labels": self.input_producer_labels
+        }
 
-    Tracks the AppliedPTransforms that consume each PValue in the Pipeline. This
-    is used to schedule consuming PTransforms to consume input after the upstream
-    transform has produced and committed output.
-    """
+class EvalContextPipelineVisitor(PipelineVisitor):
+    """For internal use only; no backwards-compatibility guarantees."""
     def __init__(self):
+        # all ptransforms with relevant context exposed
+        self.ptransforms = {}
+        # Root to leaf paths in this pipeline
+        self.paths = []
+        # Map transform labels to a list of their children's labels
+        self.child_map = {}
 
-        self.value_to_consumers = {}  # type: Dict[pvalue.PValue, Set[AppliedPTransform]]
-        self.root_transforms = set()  # type: Set[AppliedPTransform]
-        self.all_transforms = set()
-        self.step_names = {}  # type: Dict[AppliedPTransform, str]
+    def visit_transform(self, applied_ptransform: AppliedPTransform) -> None:
+        transform_label = applied_ptransform.full_label
+        inputs = [input._str_internal() for input in applied_ptransform.inputs]
+        side_inputs = [si for si in applied_ptransform.side_inputs]
+        outputs = [output for output in applied_ptransform.outputs.values()]
+        parent = applied_ptransform.parent.full_label
+        input_producer_labels = [input.producer.full_label for input in applied_ptransform.inputs]
+    
+        self.ptransforms[transform_label] = NodeContext(
+            type=type(applied_ptransform.transform).__name__,
+            applied_transform=applied_ptransform,
+            inputs=inputs,
+            side_inputs=side_inputs,
+            outputs=outputs,
+            parent=parent,
+            input_producer_labels = input_producer_labels
+        )
 
-        self._num_transforms = 0
-        self._views = set()
+        # In service of building up dag paths
+        self.child_map.setdefault(transform_label, [])
+        for producer_label in input_producer_labels:
+            self.child_map.setdefault(producer_label, []).append(transform_label)
 
-    @property
-    def views(self):
-        """Returns a list of side intputs extracted from the graph.
+    def print_full_graph(self):
+        from pprint import pprint
+        print("===========================")
+        print("ALL APPLIED TRANSFORMS")
+        print("===========================")
+        pprint({k: v.as_dict() for k, v in self.ptransforms.items()})
+        print("===========================")
 
-        Returns:
-        A list of pvalue.AsSideInput.
-        """
-        return list(self._views)
+    def find_roots(self):
+        return [label for label, ctx in self.ptransforms.items() if not ctx.inputs]
 
-    def visit_transform(self, applied_ptransform):
-        # type: (AppliedPTransform) -> None
-        print("APPLIED_PTRANS", applied_ptransform)
-        self.all_transforms.add(applied_ptransform)
-        inputs = list(applied_ptransform.inputs)
-
-        if inputs:
-            for input_value in inputs:
-                if isinstance(input_value, pvalue.PBegin):
-                    self.root_transforms.add(applied_ptransform)
-                if input_value not in self.value_to_consumers:
-                    self.value_to_consumers[input_value] = set()
-                self.value_to_consumers[input_value].add(applied_ptransform)
+    def find_paths(self, start_label, path, all_paths):
+        path.append(start_label)
+        if start_label not in self.child_map or not self.child_map[start_label]:  # Leaf node
+            all_paths.append(list(path))
         else:
-            self.root_transforms.add(applied_ptransform)
-            self.step_names[applied_ptransform] = 's%d' % (self._num_transforms)
-            self._num_transforms += 1
+            for child_label in self.child_map[start_label]:
+                self.find_paths(child_label, path, all_paths)
+        path.pop()
 
-        for side_input in applied_ptransform.side_inputs:
-            self._views.add(side_input)
+    def collect_all_paths(self):
+        if len(self.paths) > 0:
+            return self.paths
+        else:
+            roots = self.find_roots()
+            for root in roots:
+                self.find_paths(root, [], self.paths)
 
+    def print_all_paths(self):
+        from pprint import pprint
+        print("===========================")
+        print("ALL DAG PATHS")
+        print("===========================")
+        pprint(self.paths)
+        print("===========================")
 
-# @staticmethod
-# def to_spark_rdd_visitor(spark: SparkSession):
-#     class SparkRDDVisitor(PipelineVisitor):
-#         def __init__(self):
-#             self.rdds: Dict[AppliedPTransform, RDD] = {}
-#             self.last_rdd: Optional[RDD]
-            
-#         def visit_transform(self, transform_node):
-#             op_class = TRANSLATIONS.get(transform_node.transform.__class__, NoOp)
-#             # print(f"{transform_node.transform.__class__} -> {op_class}")
-#             op = op_class(transform_node, spark)
-                
-#             inputs = list(transform_node.inputs)
-
-#             if inputs:
-#                 rdd_inputs = []
-#                 for input_value in inputs:
-#                     if isinstance(input_value, pvalue.PBegin):
-#                         rdd_inputs.append(None)
-
-#                     prev_op = input_value.producer
-#                     if prev_op in self.rdds:
-#                         rdd_inputs.append(self.rdds[prev_op])
-#                 if len(rdd_inputs) == 1:
-#                     self.rdds[transform_node] = op.apply(rdd_inputs[0])
-#                     self.last_rdd = op.apply(rdd_inputs[0])
-#                 else:
-#                     self.rdds[transform_node] = op.apply(rdd_inputs)
-#                     self.last_rdd = op.apply(rdd_inputs)
-            
-#             else:
-#                 self.rdds[transform_node] = op.apply(None)
-#                 self.last_rdd = op.apply(None)
-                    
-#     return SparkRDDVisitor()

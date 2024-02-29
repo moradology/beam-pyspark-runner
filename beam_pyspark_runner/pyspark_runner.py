@@ -10,9 +10,9 @@ from apache_beam.runners.runner import PipelineResult, PipelineRunner, PipelineS
 from apache_beam.pipeline import PipelineVisitor
 from apache_beam.transforms.external import ExternalTransform
 
-from .pyspark_visitors import ConsumerTrackingPipelineVisitor, VerifyNoCrossLanguageTransforms
+from .pyspark_visitors import EvalContextPipelineVisitor, VerifyNoCrossLanguageTransforms
 from .evaluation_context import EvaluationContext
-from .evaluator import Evaluator, TransformEvaluatorRegistry
+from .evaluator import Evaluator
 from .transform_evaluator import NoOp, TRANSLATIONS
 from .overrides import pyspark_overrides
 
@@ -33,31 +33,25 @@ class PySparkRunner(PipelineRunner):
 
 
     def run_pipeline(self, pipeline, options):
+        debugging = True
 
         pyspark_options = options.view_as(PySparkOptions)
         # application_name = pyspark_options.application_name
         # spark = SparkSession.builder.appName(application_name).getOrCreate()
-        
-        pipeline.visit(VerifyNoCrossLanguageTransforms())
-        self.consumer_tracking_visitor = ConsumerTrackingPipelineVisitor()
-        pipeline.visit(self.consumer_tracking_visitor)
-        # spark_visitor = self.to_spark_rdd_visitor(spark)
-        # pipeline.replace_all(pyspark_overrides())
-        # pipeline.visit(spark_visitor)
-        evaluation_context = EvaluationContext(
-            pyspark_options,
-            self.consumer_tracking_visitor.root_transforms,
-            self.consumer_tracking_visitor.value_to_consumers,
-            self.consumer_tracking_visitor.step_names,
-            self.consumer_tracking_visitor.views
-        )
-        eval = Evaluator(
-            self.consumer_tracking_visitor.value_to_consumers,
-            TransformEvaluatorRegistry(evaluation_context),
-            evaluation_context
-        )
 
-        eval.evaluate(self.consumer_tracking_visitor.root_transforms)
+        # Only accept Python transforms
+        pipeline.visit(VerifyNoCrossLanguageTransforms())
+
+        self.graph_view_visitor = EvalContextPipelineVisitor()
+        pipeline.visit(self.graph_view_visitor)
+        if debugging:
+            self.graph_view_visitor.print_full_graph()
+            self.graph_view_visitor.collect_all_paths()
+            self.graph_view_visitor.print_all_paths()
+
+        # eval_ctx = EvaluationContext()
+        # eval = RddEvaluator(eval_ctx)
+        # eval.evaluate_to_rdd(self.consumer_tracking_visitor.root_transforms)
         
         # spark_visitor.last_rdd.collect()
         # result_rdd = NotImplemented("this isnt a thing yet.")
