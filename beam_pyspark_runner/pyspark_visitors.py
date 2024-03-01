@@ -24,6 +24,10 @@ class NodeContext:
     parent: Optional[str]
     input_producer_labels: List[str]
 
+    @property
+    def is_root(self):
+        return len(self.inputs) == 0
+
     def as_dict(self):
         return {
             "type": self.type,
@@ -47,11 +51,13 @@ class EvalContextPipelineVisitor(PipelineVisitor):
 
     def visit_transform(self, applied_ptransform: AppliedPTransform) -> None:
         transform_label = applied_ptransform.full_label
-        inputs = [input._str_internal() for input in applied_ptransform.inputs]
+        inputs = [input for input in applied_ptransform.inputs if not isinstance(input, pvalue.PBegin)]
         side_inputs = [si for si in applied_ptransform.side_inputs]
         outputs = [output for output in applied_ptransform.outputs.values()]
         parent = applied_ptransform.parent.full_label
-        input_producer_labels = [input.producer.full_label for input in applied_ptransform.inputs]
+        print(applied_ptransform.full_label)
+        print(applied_ptransform.inputs)
+        input_producer_labels = [input.producer.full_label for input in applied_ptransform.inputs if input.producer is not None]
     
         self.ptransforms[transform_label] = NodeContext(
             type=type(applied_ptransform.transform).__name__,
@@ -67,40 +73,4 @@ class EvalContextPipelineVisitor(PipelineVisitor):
         self.child_map.setdefault(transform_label, [])
         for producer_label in input_producer_labels:
             self.child_map.setdefault(producer_label, []).append(transform_label)
-
-    def print_full_graph(self):
-        from pprint import pprint
-        print("===========================")
-        print("ALL APPLIED TRANSFORMS")
-        print("===========================")
-        pprint({k: v.as_dict() for k, v in self.ptransforms.items()})
-        print("===========================")
-
-    def find_roots(self):
-        return [label for label, ctx in self.ptransforms.items() if not ctx.inputs]
-
-    def find_paths(self, start_label, path, all_paths):
-        path.append(start_label)
-        if start_label not in self.child_map or not self.child_map[start_label]:  # Leaf node
-            all_paths.append(list(path))
-        else:
-            for child_label in self.child_map[start_label]:
-                self.find_paths(child_label, path, all_paths)
-        path.pop()
-
-    def collect_all_paths(self):
-        if len(self.paths) > 0:
-            return self.paths
-        else:
-            roots = self.find_roots()
-            for root in roots:
-                self.find_paths(root, [], self.paths)
-
-    def print_all_paths(self):
-        from pprint import pprint
-        print("===========================")
-        print("ALL DAG PATHS")
-        print("===========================")
-        pprint(self.paths)
-        print("===========================")
 

@@ -10,11 +10,9 @@ from apache_beam.runners.runner import PipelineResult, PipelineRunner, PipelineS
 from apache_beam.pipeline import PipelineVisitor
 from apache_beam.transforms.external import ExternalTransform
 
-from .pyspark_visitors import EvalContextPipelineVisitor, VerifyNoCrossLanguageTransforms
-from .evaluation_context import EvaluationContext
-from .evaluator import Evaluator
-from .transform_evaluator import NoOp, TRANSLATIONS
+from .evaluator import EvalContext, RDDEvaluator
 from .overrides import pyspark_overrides
+from .pyspark_visitors import EvalContextPipelineVisitor, VerifyNoCrossLanguageTransforms
 
 
 class PySparkOptions(PipelineOptions):
@@ -36,26 +34,30 @@ class PySparkRunner(PipelineRunner):
         debugging = True
 
         pyspark_options = options.view_as(PySparkOptions)
-        # application_name = pyspark_options.application_name
-        # spark = SparkSession.builder.appName(application_name).getOrCreate()
+        application_name = pyspark_options.application_name
+        spark = SparkSession.builder.appName(application_name).getOrCreate()
+
+        pipeline.replace_all(pyspark_overrides())
 
         # Only accept Python transforms
         pipeline.visit(VerifyNoCrossLanguageTransforms())
 
-        self.graph_view_visitor = EvalContextPipelineVisitor()
-        pipeline.visit(self.graph_view_visitor)
-        if debugging:
-            self.graph_view_visitor.print_full_graph()
-            self.graph_view_visitor.collect_all_paths()
-            self.graph_view_visitor.print_all_paths()
+        context_visitor = EvalContextPipelineVisitor()
+        pipeline.visit(context_visitor)
 
-        # eval_ctx = EvaluationContext()
-        # eval = RddEvaluator(eval_ctx)
-        # eval.evaluate_to_rdd(self.consumer_tracking_visitor.root_transforms)
+        eval_ctx = EvalContext(context_visitor)
+        if debugging:
+            eval_ctx.print_full_graph()
+            eval_ctx.print_all_paths()
+        evaluator = RDDEvaluator(spark.sparkContext, eval_ctx)
+        path_rdds = evaluator.evaluate_pipeline(pipeline)
+        for rdd in path_rdds:
+            rdd.collect()
         
         # spark_visitor.last_rdd.collect()
         # result_rdd = NotImplemented("this isnt a thing yet.")
         # result_rdd.collect()
         # spark.stop()
         
-        return PipelineResult(PipelineState.DONE)
+        res = PipelineResult(PipelineState.DONE)
+        return res

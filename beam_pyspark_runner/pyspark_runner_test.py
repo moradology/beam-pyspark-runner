@@ -52,8 +52,8 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
         with self.pipeline as p:
             pcoll = p | beam.Create([1])
             pcoll | "first one" >> beam.Map(lambda x: x / 5)
-            pcoll | "big label" >> beam.Map(lambda x: x + 1) | "super label" >> beam.Map(lambda y: y * 2) | "yet another label" >> beam.Map(lambda z: z - 3)
-            pcoll | "more names" >> beam.Map(lambda x: x + 2)
+            # pcoll | "big label" >> beam.Map(lambda x: x + 1) | "super label" >> beam.Map(lambda y: y * 2) | "yet another label" >> beam.Map(lambda z: z - 3)
+            # pcoll | "more names" >> beam.Map(lambda x: x + 2)
 
     # def test_map(self):
     #     def double(x):

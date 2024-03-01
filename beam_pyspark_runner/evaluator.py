@@ -1,52 +1,51 @@
+import dataclasses
 import itertools
+from typing import List
 
-from apache_beam import pvalue
+from apache_beam import Pipeline
 from apache_beam.pipeline import AppliedPTransform
-from apache_beam.transforms import core
-from .evaluation_context import EvaluationContext
+from pyspark import SparkContext
+
+from .eval_context import EvalContext
+from .transform_evaluators import EvalMapping
 
 
-class _TransformEvaluator(object):
-    """An evaluator of a specific application of a transform."""
-    def __init__(self,
-                evaluation_context, # type: EvaluationContext
-                applied_ptransform):  # type: AppliedPTransform
-        self._evaluation_context = evaluation_context
-        self._applied_ptransform = applied_ptransform
-        self._transform = self._applied_ptransform.transform
-        self._expand_outputs()
-
-    def apply(self, input):
-       pass
-
-    def _expand_outputs(self):
-        outputs = set()
-        for pval in self._applied_ptransform.outputs.values():
-            if isinstance(pval, pvalue.DoOutputsTuple):
-                pvals = (v for v in pval)
-            else:
-                pvals = (pval, )
-            for v in pvals:
-                outputs.add(v)
-        self._outputs = frozenset(outputs)
-
-class _ImpulseEvaluator(_TransformEvaluator):
-    pass
-
-class Evaluator(object):
+class RDDEvaluator(object):
     def __init__(
         self,
-        value_to_consumers,
-        evaluation_context  # type: EvaluationContext
+        spark_context: SparkContext,
+        eval_context: EvalContext,
+        eval_mapping: EvalMapping = EvalMapping(),
     ):
-        self.value_to_consumers = value_to_consumers
-        self.evaluation_context = evaluation_context
+        self.spark_context = spark_context
+        self.eval_context = eval_context
+        self.eval_mapping = eval_mapping
+        self.result_cache = {}
 
-    def evaluate(self, roots):
-        self.root_nodes = frozenset(roots)
-        self.all_nodes = frozenset(
-            itertools.chain(
-                roots,
-                *itertools.chain(self.value_to_consumers.values())
-            )
-        )
+    def eval_cache(self, transform_label):
+        if transform_label in self.result_cache:
+            evaluated_result = self.result_cache[transform_label]
+        else:
+            evaluated_result = self.evaluate_node(transform_label)
+        return evaluated_result
+
+    def evaluate_node(self, transform_label: str):
+        node_context = self.eval_context.get_node_context(transform_label)
+        evaluator_class = self.eval_mapping.get_eval_class(node_context.applied_transform)
+        if node_context.is_root:
+            evaluated = evaluator_class(self.spark_context, self.eval_context, node_context).apply(None)
+        else:
+            eval_args = [self.eval_cache(input.producer.full_label) for input in node_context.inputs]
+            evaluated = evaluator_class(self.spark_context, self.eval_context, node_context).apply(eval_args)
+        return evaluated
+
+    def evaluate_path(self, path_labels: List[str]):
+        for transform_label in path_labels:
+            evaluated = self.eval_cache(transform_label)
+        return(evaluated)
+
+    def evaluate_pipeline(self, pipeline: Pipeline):
+        path_rdds = []
+        for path_labels in self.eval_context.paths:
+            path_rdds.append(self.evaluate_path(path_labels))
+        return path_rdds
