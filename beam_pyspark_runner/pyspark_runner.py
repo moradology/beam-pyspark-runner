@@ -35,9 +35,6 @@ class PySparkRunner(PipelineRunner):
 
         pyspark_options = options.view_as(PySparkOptions)
         application_name = pyspark_options.application_name
-        spark = SparkSession.builder.appName(application_name).getOrCreate()
-
-        pipeline.replace_all(pyspark_overrides())
 
         # Only accept Python transforms
         pipeline.visit(VerifyNoCrossLanguageTransforms())
@@ -48,16 +45,25 @@ class PySparkRunner(PipelineRunner):
         eval_ctx = EvalContext(context_visitor)
         if debugging:
             eval_ctx.print_full_graph()
-            eval_ctx.print_all_paths()
-        evaluator = RDDEvaluator(spark.sparkContext, eval_ctx)
-        path_rdds = evaluator.evaluate_pipeline(pipeline)
-        for rdd in path_rdds:
-            rdd.collect()
-        
-        # spark_visitor.last_rdd.collect()
-        # result_rdd = NotImplemented("this isnt a thing yet.")
-        # result_rdd.collect()
-        # spark.stop()
+        #    eval_ctx.print_all_paths()
+        evaluator = RDDEvaluator()
+
+        # Construct plan for execution
+        # TODO: optimize pipeline
+        # TODO: organize plan for application of `side_inputs`
+        spark = SparkSession.builder.appName(application_name).getOrCreate()
+        # Evaluate nodes into RDDs
+        rdd_paths = []
+        for leaf in eval_ctx.leaves:
+            rdd_paths.append(evaluator.evaluate_node(leaf.applied_transform, spark.sparkContext))
+
+        # Run pipelines
+        results = []
+        for rdd in rdd_paths:
+            res = rdd.collect()
+            results.append(res)
+
+        print("RESULTS", results)
         
         res = PipelineResult(PipelineState.DONE)
         return res

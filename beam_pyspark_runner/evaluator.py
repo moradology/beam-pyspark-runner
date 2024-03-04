@@ -2,50 +2,44 @@ import dataclasses
 import itertools
 from typing import List
 
-from apache_beam import Pipeline
+from apache_beam import pvalue, Pipeline
 from apache_beam.pipeline import AppliedPTransform
-from pyspark import SparkContext
+from pyspark import RDD, SparkContext
 
 from .eval_context import EvalContext
-from .transform_evaluators import EvalMapping
+from .pyspark_visitors import NodeContext
+from .transform_evaluators import get_eval_fn
 
 
 class RDDEvaluator(object):
     def __init__(
-        self,
-        spark_context: SparkContext,
-        eval_context: EvalContext,
-        eval_mapping: EvalMapping = EvalMapping(),
+        self
     ):
-        self.spark_context = spark_context
-        self.eval_context = eval_context
-        self.eval_mapping = eval_mapping
         self.result_cache = {}
 
-    def eval_cache(self, transform_label):
-        if transform_label in self.result_cache:
-            evaluated_result = self.result_cache[transform_label]
+    def evaluate_node(self, aptrans: AppliedPTransform, sc: SparkContext):
+        node_label = aptrans.full_label
+        if node_label in self.result_cache:
+            evaluated = self.result_cache[node_label]
         else:
-            evaluated_result = self.evaluate_node(transform_label)
-        return evaluated_result
-
-    def evaluate_node(self, transform_label: str):
-        node_context = self.eval_context.get_node_context(transform_label)
-        evaluator_class = self.eval_mapping.get_eval_class(node_context.applied_transform)
-        if node_context.is_root:
-            evaluated = evaluator_class(self.spark_context, self.eval_context, node_context).apply(None)
-        else:
-            eval_args = [self.eval_cache(input.producer.full_label) for input in node_context.inputs]
-            evaluated = evaluator_class(self.spark_context, self.eval_context, node_context).apply(eval_args)
+            evaluator_fn = get_eval_fn(aptrans)
+            if not [input for input in aptrans.inputs if not isinstance(input, pvalue.PBegin)]: # root
+                evaluated = evaluator_fn(aptrans, None, sc)
+                self.result_cache[aptrans.full_label] = evaluated
+            else:
+                eval_args = [self.evaluate_node(input.producer, sc) for input in aptrans.inputs]
+                evaluated = evaluator_fn(aptrans, eval_args, sc)
+                self.result_cache[aptrans.full_label] = evaluated
         return evaluated
 
-    def evaluate_path(self, path_labels: List[str]):
-        for transform_label in path_labels:
-            evaluated = self.eval_cache(transform_label)
-        return(evaluated)
+    # def evaluate_path(self, path: List[NodeContext], sc: SparkContext) -> RDD:
+    #     import pprint
+    #     path_rdds = []
+    #     print("path to evaluate")
+    #     pprint.pprint(list(map(lambda x: x.as_dict(), path)))
+    #     for ctx in path:
+    #         print("STARTING EVAL OF:", ctx)
+    #         path_rdds.append(self.evaluate_node(ctx, sc))
+    #     # The final path should represent the *full* lazy transform to be computed here
+    #     return path_rdds[-1]
 
-    def evaluate_pipeline(self, pipeline: Pipeline):
-        path_rdds = []
-        for path_labels in self.eval_context.paths:
-            path_rdds.append(self.evaluate_path(path_labels))
-        return path_rdds

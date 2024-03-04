@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import math
-from typing import Union, Sequence
+from typing import Callable, List, Optional, Sequence
 
 from apache_beam import pvalue
 from apache_beam.pipeline import AppliedPTransform
@@ -11,62 +11,59 @@ from pyspark import RDD, SparkContext
 from .eval_context import EvalContext, NodeContext
 from .overrides import _Create
 
+def eval_Impulse(applied_)
 
-OpInput = Union[Sequence[RDD], None]
+def eval_Create(applied_transform: AppliedPTransform, eval_args: None, sc: SparkContext) -> RDD:
+    assert eval_args is None, 'Create expects no input'
+    items = applied_transform.transform.values
+    num_partitions = max(1, math.ceil(math.sqrt(len(items)) / math.sqrt(100)))
+    rdd = sc.parallelize(items, num_partitions)
+    return rdd
 
-class _TransformEvaluator(ABC):
-    """An evaluator of a specific application of a transform."""
-    def __init__(
-        self,
-        spark_context: SparkContext,
-        evaluation_context: EvalContext,
-        node_context: NodeContext
-    ):
-        self.evaluation_context = evaluation_context
-        self.node_context = node_context
-        self.applied_transform = node_context.applied_transform
-        self.transform = self.applied_transform.transform
-        self.inputs = node_context.inputs
-        self.outputs = node_context.outputs
-        self.spark_context = spark_context
+def eval_ParDo(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext):
+    assert len(eval_args) == 1, "ParDo expects input of length 1"
+    print("EVAL ARGS IN PARDO")
+    print(applied_transform)
+    print(eval_args)
+    print("EVAL ARGS IN PARDO")
+    transform = applied_transform.transform
+    rdd = eval_args[0]
+    return rdd.flatMap(lambda x: transform.fn.process(x, *transform.args, **transform.kwargs))
 
-    @abstractmethod
-    def apply(self, sc: SparkContext, eval_args: OpInput):
-       pass
+def eval_Flatten(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext):
+    if not eval_args:
+        sc.emptyRDD()
+    return sc.union(eval_args)
 
-class Create(_TransformEvaluator):
-    def apply(self, eval_args: None) -> RDD:
-        assert eval_args is None, 'Create expects no input'
-        items = self.applied_transform.transform.values
-        num_partitions = max(1, math.ceil(math.sqrt(len(items)) / math.sqrt(100)))
-        rdd = self.spark_context.parallelize(items, num_partitions)
-        return rdd
-
-class _ParDo(_TransformEvaluator):
-    def apply(self, eval_args: RDD):
-       assert len(eval_args) == 1, "ParDo expects input of length 1"
-       rdd = eval_args[0]
-       return rdd.flatMap(lambda x: self.transform.fn.process(x, *self.transform.args, **self.transform.kwargs))
+def eval_GroupByKey(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext):
+    assert len(eval_args) == 1, "GroupByKey expects input of length 1"
+    print("EVAL ARGS IN GROUPBYKEY")
+    print(applied_transform)
+    print(eval_args)
+    print("EVAL ARGS IN GROUPBYKEY")
+    rdd = eval_args[0]
+    return rdd.groupByKey()
 
 
-class EvalMapping(object):
-    evaluator_mapping = {
-        _Create: Create,
-        core.ParDo: _ParDo
-    }
+evaluator_mapping = {
+    core.Impulse: eval_Impulse,
+    core.ParDo: eval_ParDo,
+    core.Flatten: eval_Flatten,
+    core.GroupByKey: eval_GroupByKey
+}
 
-    def get_eval_class(self, applied_ptransform: AppliedPTransform) -> _TransformEvaluator:
-        # Walk up the class hierarchy to find an evaluable type. This is necessary
-        # for supporting sub-classes of core transforms.
-        print(f"Finding eval class for {applied_ptransform}")
-        for cls in applied_ptransform.transform.__class__.mro():
-            eval_class = self.evaluator_mapping.get(cls)
-            if eval_class:
-                print(f"Eval: {cls} -> {eval_class} ")
-                break
-            if not eval_class:
-                raise NotImplementedError(
-                    'Execution of [%s] not implemented in runner %s.' %
-                    (type(applied_ptransform.transform), self))
+def get_eval_fn(applied_ptransform: AppliedPTransform) -> Callable[[AppliedPTransform, Optional[RDD], SparkContext], RDD]:
+    # Walk up the class hierarchy to find an evaluable type. This is necessary
+    # for supporting sub-classes of core transforms.
+    for cls in applied_ptransform.transform.__class__.mro():
+        eval_fn = evaluator_mapping.get(cls)
+        if eval_fn:
+            print(f"Eval: {cls} -> {eval_fn} ")
+            break
 
-        return eval_class
+    if not eval_fn:
+        raise NotImplementedError(
+            'Execution of [%s] not implemented in pyspark runner.' %
+            type(applied_ptransform.transform))
+
+    return eval_fn
