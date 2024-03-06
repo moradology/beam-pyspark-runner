@@ -48,27 +48,28 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
     def setUp(self) -> None:
         self.pipeline = test_pipeline.TestPipeline(runner=PySparkRunner())
 
-    # def test_create(self):
-    #     with self.pipeline as p:
-    #         pcoll = p | beam.Create([1])
-    #         # assert_that(pcoll, equal_to([1]))
+    def test_create(self):
+        with self.pipeline as p:
+            pcoll = p | beam.Create([1])
+            assert_that(pcoll, equal_to([1]))
 
-    # def test_multiple_paths(self):
-    #     with self.pipeline as p:
-    #         pcoll = p | beam.Create([1])
-    #         pcoll | "first one" >> beam.Map(lambda x: x / 5)
-    #         pcoll | "big label" >> beam.Map(lambda x: x + 1) | "super label" >> beam.Map(lambda y: y * 2) | "yet another label" >> beam.Map(lambda z: z - 3)
-    #         pcoll | "more names" >> beam.Map(lambda x: x + 2)
+    def test_multiple_paths(self):
+        with self.pipeline as p:
+            pcoll = p | beam.Create([1])
+            p1 = pcoll | "first one" >> beam.Map(lambda x: x / 5)
+            p2 = pcoll | "big label" >> beam.Map(lambda x: x + 1) | "super label" >> beam.Map(lambda y: y * 2) | "yet another label" >> beam.Map(lambda z: z - 1)
+            p3 = pcoll | "more names" >> beam.Map(lambda x: x + 2)
+            assert_that(p2, equal_to([3]))
 
-    # def test_flatmap(self):
-    #     with self.pipeline as p:
-    #         pcoll = p | beam.Create([[1], [3, 4]]) | "flatmap sum" >> beam.FlatMap(lambda x: [sum(x)])
-    #         assert_that(pcoll, equal_to([1, 7]))
+    def test_flatmap(self):
+        with self.pipeline as p:
+            pcoll = p | beam.Create([[1], [3, 4]]) | "flatmap sum" >> beam.FlatMap(lambda x: [sum(x)])
+            assert_that(pcoll, equal_to([1, 7]))
 
-    # def test_map(self):
-    #     with self.pipeline as p:
-    #         pcoll = p | beam.Create([[1], [3, 4]]) | beam.Map(sum)
-    #         assert_that(pcoll, equal_to([1, 7]))
+    def test_map(self):
+        with self.pipeline as p:
+            pcoll = p | beam.Create([[1], [3, 4]]) | beam.Map(sum)
+            assert_that(pcoll, equal_to([1, 7]))
 
     def test_combine(self):
         sum_fn = self.build_reduce_fn(
@@ -81,22 +82,16 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
         with self.pipeline as p:
             pcoll = p | beam.Create([1, 2, 3, 4]) | beam.CombineGlobally(sum_fn())
             pcoll
-            #assert_that(pcoll, equal_to([10]))
+            assert_that(pcoll, equal_to([10]))
 
-    # def test_create_map_and_groupby(self):
-    #     def double(x):
-    #         return x * 2, x
+    def test_create_map_and_groupby(self):
+        def double_key(x):
+            return x * 2, x
 
-    #     with self.pipeline as p:
-    #         pcoll = p | beam.Create([1]) | beam.Map(double) | beam.GroupByKey()
-    #         assert_that(pcoll, equal_to([(2, [1])]))
+        with self.pipeline as p:
+            pcoll = p | beam.Create([1]) | beam.Map(double_key) | beam.GroupByKey()
+            assert_that(pcoll, equal_to([(2, [1])]))
 
-    # def test_create_map_and_groupby_other_thing(self):
-    #     def double(x):
-    #         return x * 2, x
-
-    #     self.pipeline | beam.Create([1]) | beam.Map(double) | beam.GroupByKey() | beam.Map(lambda x: print(x))
-    #     self.pipeline.run()
 
 if __name__ == '__main__':
     unittest.main()

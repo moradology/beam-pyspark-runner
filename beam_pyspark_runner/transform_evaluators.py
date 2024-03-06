@@ -12,7 +12,7 @@ from .eval_context import EvalContext, NodeContext
 from .overrides import _Create, _GroupByKey, _CombinePerKey
 
 
-def eval_Create(applied_transform: AppliedPTransform, eval_args: None, sc: SparkContext) -> RDD:
+def eval_Create(applied_transform: AppliedPTransform, eval_args: None, sc: SparkContext, side_inputs={}) -> RDD:
     assert eval_args is None, 'Create expects no input'
     items = applied_transform.transform.values
     num_partitions = max(1, math.ceil(math.sqrt(len(items)) / math.sqrt(100)))
@@ -23,10 +23,15 @@ def eval_Create(applied_transform: AppliedPTransform, eval_args: None, sc: Spark
     # print("===============================\n")
     return rdd
 
-def eval_ParDo(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext):
+def eval_ParDo(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
     assert len(eval_args) == 1, "ParDo expects input of length 1"
     transform = applied_transform.transform
     rdd = eval_args[0]
+    broadcast_args = [sc.broadcast(side_inputs[si.pvalue.producer]) for si in applied_transform.side_inputs]
+    def apply_with_side_input(x):
+        broadcast_values = [broadcast.value for broadcast in broadcast_args]
+        return transform.fn.process(x, *broadcast_values, **transform.kwargs)
+    return rdd.flatMap(apply_with_side_input)
     # print("===============================")
     # print("START EVAL PARDO", applied_transform.full_label)
     # print("pardo aptrans", applied_transform, applied_transform.full_label)
@@ -35,9 +40,8 @@ def eval_ParDo(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: S
     # print(rdd.flatMap(lambda x: transform.fn.process(x, *transform.args, **transform.kwargs)).collect())
     # print("END EVAL PARDO")
     # print("===============================\n")
-    return rdd.flatMap(lambda x: transform.fn.process(x, *transform.args, **transform.kwargs))
 
-def eval_Flatten(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext):
+def eval_Flatten(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
     # print("===============================")
     # print("RESULTS IN flatten")
     # print(sc.union(eval_args).collect())
@@ -45,7 +49,7 @@ def eval_Flatten(applied_transform: AppliedPTransform, eval_args: List[RDD], sc:
     # print("===============================\n")
     return sc.union(eval_args)
 
-def eval_GroupByKey(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext):
+def eval_GroupByKey(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
     assert len(eval_args) == 1, "ParDo expects input of length 1"
     rdd = eval_args[0]
     # print("===============================")
@@ -55,7 +59,7 @@ def eval_GroupByKey(applied_transform: AppliedPTransform, eval_args: List[RDD], 
     # print("===============================\n")
     return rdd.groupByKey().mapValues(list)
 
-def eval_CombinePerKey(applied_transform, eval_args: List[RDD], sc: SparkContext):
+def eval_CombinePerKey(applied_transform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
     assert len(eval_args) == 1, "CombinePerKey expects input of length 1"
     rdd = eval_args[0]
     combine_fn = applied_transform.transform._combine_fn
@@ -67,7 +71,7 @@ def eval_CombinePerKey(applied_transform, eval_args: List[RDD], sc: SparkContext
     return result_rdd
 
 
-def NoOp(applied_transform: AppliedPTransform, eval_args: Any, sc: SparkContext):
+def NoOp(applied_transform: AppliedPTransform, eval_args: Any, sc: SparkContext, side_inputs={}):
     print("===============================")
     print(f"NOOP VALUE HERE: {NoOp}", applied_transform)
     print("===============================\n")

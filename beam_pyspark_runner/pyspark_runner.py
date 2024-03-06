@@ -15,7 +15,6 @@ from .evaluator import EvalContext, RDDEvaluator
 from .overrides import pyspark_overrides
 from .pyspark_visitors import EvalContextPipelineVisitor, VerifyNoCrossLanguageTransforms
 
-from pprint import pprint
 
 class PysparkResult(PipelineResult):
     def __post_init__(self):
@@ -57,8 +56,6 @@ class PysparkStage:
                 for pval in node.inputs:
                     if isinstance(pval,pvalue.PBegin):
                         continue
-                    print(node)
-                    print(pval, pval.producer)
                     producer_node = pval.producer
                     upstream_dependencies  = upstream_dependencies.union(find_side_input_dependencies(producer_node, current_deps))
                 return current_deps.union(upstream_dependencies)
@@ -88,7 +85,6 @@ class PysparkPlan:
                     if in_degree[potential_dependent] == 0:
                         queue.append(potential_dependent)
 
-        print(ordered_stages)
         if len(ordered_stages) == len(self.stages):
             return ordered_stages
         else:
@@ -127,32 +123,22 @@ class PySparkRunner(PipelineRunner):
         eval_ctx = EvalContext(context_visitor)
         if debugging:
             eval_ctx.print_full_graph()
-            pprint(context_visitor.child_map)
         evaluator = RDDEvaluator()
 
         leaves = [leaf.applied_transform for leaf in eval_ctx.leaves]
         execution_plan = PysparkPlan([PysparkStage.from_terminal_node(leaf) for leaf in leaves])
-        pprint("TOPOLOGICALLY ORDERED")
-        pprint(execution_plan.topologically_ordered())
 
         # Construct plan for execution
         # TODO: optimize pipeline
-        # TODO: organize plan for application of `side_inputs`
-        spark = SparkSession.builder.appName(application_name).getOrCreate()
         # Evaluate nodes into RDDs
-        rdd_paths = []
-        for leaf in eval_ctx.leaves:
-            rdd_paths.append(evaluator.evaluate_node(leaf.applied_transform, spark.sparkContext))
-        print("rdd_paths")
-        pprint(rdd_paths)
-
-        # Run pipelines
         results = []
-        for rdd in rdd_paths:
-            res = rdd.collect()
-            results.append(res)
+        dependencies = {}
+        spark = SparkSession.builder.appName(application_name).getOrCreate()
+        for stage in execution_plan.topologically_ordered():
+            result = evaluator.evaluate_node(stage.terminal_node, spark.sparkContext, dependencies).collect()
+            dependencies[stage.terminal_node] = result
+            results.append(result)
 
-        print("RDD RESULTS", rdd)
         print("RESULTS", results)
             
         return PysparkResult(state=PipelineState.DONE)
