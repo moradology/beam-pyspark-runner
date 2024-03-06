@@ -62,9 +62,9 @@ class EvalContext(object):
     #                 parent_contexts = list(map(lambda label: self.transform_contexts[label], leaf_ctx.input_producer_labels))
 
 
-    def print_all_paths(self):
-        print("===========================")
-        print("ALL DAG PATHS")
-        print("===========================")
-        pprint(self.paths)
-        print("===========================")
+    # def print_all_paths(self):
+    #     print("===========================")
+    #     print("ALL DAG PATHS")
+    #     print("===========================")
+    #     pprint(self.paths)
+    #     print("===========================")

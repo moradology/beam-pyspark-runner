@@ -53,12 +53,7 @@ class EvalContextPipelineVisitor(PipelineVisitor):
         side_inputs = [si for si in applied_ptransform.side_inputs]
         outputs = [output for output in applied_ptransform.outputs.values()]
         parent = applied_ptransform.parent.full_label
-        print("FULL LABEL")
-        print(applied_ptransform.full_label)
-        print(applied_ptransform.inputs)
         input_producer_labels = [input.producer.full_label for input in applied_ptransform.inputs if input.producer is not None]
-        print("INPUT LABELS")
-        print(input_producer_labels)
     
         self.ptransforms[transform_label] = NodeContext(
             type=type(applied_ptransform.transform).__name__,
