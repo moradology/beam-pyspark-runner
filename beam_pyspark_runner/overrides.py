@@ -12,11 +12,9 @@ from apache_beam.transforms import ptransform
 from apache_beam.transforms.combiners import _CurriedFn
 from apache_beam.transforms.window import GlobalWindows
 
-from .helper_transforms import LiftedCombinePerKey
 
 K = t.TypeVar("K")
 V = t.TypeVar("V")
-
 
 @dataclasses.dataclass
 class _Create(apache_beam.PTransform):

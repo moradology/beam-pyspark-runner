@@ -127,6 +127,8 @@ class PySparkRunner(PipelineRunner):
 
         leaves = [leaf.applied_transform for leaf in eval_ctx.leaves]
         execution_plan = PysparkPlan([PysparkStage.from_terminal_node(leaf) for leaf in leaves])
+        print("topological ordering")
+        print(execution_plan)
 
         # Construct plan for execution
         # TODO: optimize pipeline

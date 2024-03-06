@@ -72,9 +72,9 @@ def eval_CombinePerKey(applied_transform, eval_args: List[RDD], sc: SparkContext
 
 
 def NoOp(applied_transform: AppliedPTransform, eval_args: Any, sc: SparkContext, side_inputs={}):
-    print("===============================")
-    print(f"NOOP VALUE HERE: {NoOp}", applied_transform)
-    print("===============================\n")
+    # print("===============================")
+    # print(f"NOOP VALUE HERE: {NoOp}", applied_transform)
+    # print("===============================\n")
     return eval_args[0]
 
 
@@ -96,7 +96,7 @@ def get_eval_fn(applied_ptransform: AppliedPTransform) -> Callable[[AppliedPTran
     #         break
     cls = applied_ptransform.transform.__class__
     eval_fn = evaluator_mapping.get(cls, NoOp)
-    print(f"USING {eval_fn} FOR {cls} @ {applied_ptransform.full_label}")
+    #print(f"USING {eval_fn} FOR {cls} @ {applied_ptransform.full_label}")
 
     if not eval_fn:
         raise NotImplementedError(
