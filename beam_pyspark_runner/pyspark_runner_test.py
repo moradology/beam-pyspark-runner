@@ -1,8 +1,8 @@
 import unittest
+import warnings
 from typing import Any, Callable, TypeVar
 
 import apache_beam as beam
-from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.testing import test_pipeline
 from apache_beam.testing.util import assert_that
 from apache_beam.testing.util import equal_to
@@ -46,6 +46,7 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
 
     """Test class used to introspect the spark runner via a debugger."""
     def setUp(self) -> None:
+        warnings.filterwarnings("ignore", category=ResourceWarning)
         self.pipeline = test_pipeline.TestPipeline(runner=PySparkRunner())
 
     def test_create(self):
@@ -56,9 +57,10 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
     def test_multiple_paths(self):
         with self.pipeline as p:
             pcoll = p | beam.Create([1])
-            p1 = pcoll | "first one" >> beam.Map(lambda x: x / 5)
-            p2 = pcoll | "big label" >> beam.Map(lambda x: x + 1) | "super label" >> beam.Map(lambda y: y * 2) | "yet another label" >> beam.Map(lambda z: z - 1)
-            p3 = pcoll | "more names" >> beam.Map(lambda x: x + 2)
+            p1 = pcoll | "first branch" >> beam.Map(lambda x: x / 5)
+            p2 = pcoll | "second branch" >> beam.Map(lambda x: x + 1) | "super label" >> beam.Map(lambda y: y * 2) | "yet another label" >> beam.Map(lambda z: z - 1)
+            p3 = pcoll | "third branch" >> beam.Map(lambda x: x + 2)
+            p4 = p2 | "sharing second" >> beam.Map(lambda x: x * 100)
             assert_that(p2, equal_to([3]))
 
     def test_flatmap(self):

@@ -57,20 +57,6 @@ class _CombinePerKey(apache_beam.PTransform):
   def expand(self, pcoll):
     return apache_beam.pvalue.PCollection.from_(pcoll)
 
-@typehints.with_input_types(t.Tuple[K, V])
-@typehints.with_output_types(t.Tuple[K, t.Iterable[V]])
-class _FlatMap(apache_beam.ParDo):
-  def expand(self, input_or_inputs):
-    return apache_beam.pvalue.PCollection.from_(input_or_inputs)
-
-  def infer_output_type(self, input_type):
-
-    key_type, value_type = typehints.trivial_inference.key_value_types(
-      input_type
-    )
-    return typehints.KV[key_type, typehints.Iterable[value_type]]
-
-
 class CreateOverride(PTransformOverride):
     def matches(self, applied_ptransform: AppliedPTransform) -> bool:
         return isinstance(applied_ptransform.transform, apache_beam.Create)
@@ -94,19 +80,7 @@ class CombinePerKeyOverride(PTransformOverride):
         transform = applied_ptransform.transform
         return _CombinePerKey(transform.fn, transform.args, transform.kwargs)
 
-# Not used for now, the beam AST for python appears to not surface this as a class,
-# so it is hard to actually guarantee that we can find these.
-class FlatMapOverride(PTransformOverride):
-    def matches(self, applied_ptransform):
-        if isinstance(applied_ptransform.transform, apache_beam.ParDo):
-            pattern = r"FlatMap\((.*?)\)"
-            return bool(re.search(pattern, applied_ptransform.full_label))
-
-    def get_replacement_transform_for_applied_ptransform(self, applied_ptransform):
-        transform = applied_ptransform.transform
-        return _FlatMap(transform.fn, transform.args, transform.kwargs)
-
-# Order appears to matter here
+# Order matters here!
 pyspark_overrides = [CreateOverride(), CombinePerKeyOverride(), GroupByKeyOverride()]
 
 
