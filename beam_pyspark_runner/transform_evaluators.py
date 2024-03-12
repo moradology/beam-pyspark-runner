@@ -5,7 +5,7 @@ from apache_beam.pipeline import AppliedPTransform
 from apache_beam.transforms import core
 from pyspark import RDD, SparkContext
 
-from .overrides import _Create, _GroupByKey, _CombinePerKey
+from .overrides import _Create, _GroupByKey, _CombinePerKey, _ReadFromText
 
 
 def eval_Create(applied_transform: AppliedPTransform, eval_args: None, sc: SparkContext, side_inputs={}) -> RDD:
@@ -13,6 +13,12 @@ def eval_Create(applied_transform: AppliedPTransform, eval_args: None, sc: Spark
     items = applied_transform.transform.values
     num_partitions = max(1, math.ceil(math.sqrt(len(items)) / math.sqrt(100)))
     rdd = sc.parallelize(items, num_partitions)
+    return rdd
+
+def eval_ReadFromText(applied_transform: AppliedPTransform, eval_args: None, sc: SparkContext, side_inputs={}) -> RDD:
+    assert eval_args is None, 'ReadFromText expects no input'
+    file_path = applied_transform.transform.values
+    rdd = sc.textFile(file_path)
     return rdd
 
 def eval_ParDo(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
@@ -37,10 +43,12 @@ def eval_CombinePerKey(applied_transform, eval_args: List[RDD], sc: SparkContext
     assert len(eval_args) == 1, "CombinePerKey expects input of length 1"
     rdd = eval_args[0]
     combine_fn = applied_transform.transform._combine_fn
+    # Coerce the beam way of doing things into spark's preferred merge format
+    binary_merge = lambda x, y: combine_fn.merge_accumulators([x, y])
     result_rdd = rdd.aggregateByKey(
         combine_fn.create_accumulator(),
         combine_fn.add_input,
-        combine_fn.merge_accumulators
+        binary_merge
     ).mapValues(combine_fn.extract_output)
     return result_rdd
 
@@ -51,6 +59,7 @@ def NoOp(applied_transform: AppliedPTransform, eval_args: Any, sc: SparkContext,
 
 evaluator_mapping = {
     _Create: eval_Create,
+    _ReadFromText: eval_ReadFromText,
     core.Flatten: eval_Flatten,
     _GroupByKey: eval_GroupByKey,
     _CombinePerKey: eval_CombinePerKey,

@@ -11,6 +11,7 @@ from apache_beam.pipeline import PTransformOverride
 from apache_beam.transforms import ptransform
 from apache_beam.transforms.combiners import _CurriedFn
 from apache_beam.transforms.window import GlobalWindows
+from apache_beam.io.textio import ReadFromText
 
 
 K = t.TypeVar("K")
@@ -18,6 +19,19 @@ V = t.TypeVar("V")
 
 @dataclasses.dataclass
 class _Create(apache_beam.PTransform):
+    values: t.Tuple[t.Any]
+
+    def expand(self, input_or_inputs):
+        return apache_beam.pvalue.PCollection.from_(input_or_inputs)
+
+    def get_windowing(self, inputs: t.Any) -> apache_beam.Windowing:
+        return apache_beam.Windowing(GlobalWindows())
+    
+    def __post_init__(self):
+        self.inputs = []
+
+@dataclasses.dataclass
+class _ReadFromText(apache_beam.PTransform):
     values: t.Tuple[t.Any]
 
     def expand(self, input_or_inputs):
@@ -62,7 +76,14 @@ class CreateOverride(PTransformOverride):
         return isinstance(applied_ptransform.transform, apache_beam.Create)
     
     def get_replacement_transform_for_applied_ptransform(self, applied_ptransform: AppliedPTransform) -> ptransform.PTransform:
-        return _Create(t.cast(apache_beam.Create, applied_ptransform.transform).values)
+        return _Create(applied_ptransform.transform.values)
+
+class ReadFromTextOverride(PTransformOverride):
+    def matches(self, applied_ptransform: AppliedPTransform) -> bool:
+        return isinstance(applied_ptransform.transform, ReadFromText)
+    
+    def get_replacement_transform_for_applied_ptransform(self, applied_ptransform: AppliedPTransform) -> ptransform.PTransform:
+        return _ReadFromText(applied_ptransform.transform._source.display_data()['file_pattern'].value)
     
 class GroupByKeyOverride(PTransformOverride):
     def matches(self, applied_ptransform: AppliedPTransform) -> bool:
@@ -81,6 +102,6 @@ class CombinePerKeyOverride(PTransformOverride):
         return _CombinePerKey(transform.fn, transform.args, transform.kwargs)
 
 # Order matters here!
-pyspark_overrides = [CreateOverride(), CombinePerKeyOverride(), GroupByKeyOverride()]
+pyspark_overrides = [CreateOverride(), ReadFromTextOverride(), CombinePerKeyOverride(), GroupByKeyOverride()]
 
 

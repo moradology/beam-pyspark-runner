@@ -39,10 +39,10 @@ class PySparkOptions(PipelineOptions):
                             help="Name of the PySpark application",
                             default="BeamPySparkApp")
         parser.add_argument("--print_execution_plan",
-                            default=True,
+                            action="store_true",
                             help="Flag to print a description of this pipeline's execution")
         parser.add_argument("--debug",
-                            default=False,
+                            action="store_false",
                             help="Flag to print stuff for debugging")
 
 
@@ -72,13 +72,15 @@ class PySparkRunner(PipelineRunner):
 
         # Optionally report on execution plan
         if pyspark_options.print_execution_plan:
-            print("=============================")
+            print("\n=============================")
             print(f"Execution Plan for {pyspark_options.application_name}")
             print("=============================")
             for idx, stage in enumerate(execution_plan.topologically_ordered()):
                 print(f"Stage {idx+1} of {len(execution_plan.stages)}")
                 print(f"Calculate terminal node {stage.terminal_node}")
-                print(f"With dependencies on {stage.side_input_dependencies}")
+                if stage.side_input_dependencies:
+                    print(f"  - With dependencies on {stage.side_input_dependencies}")
+            print("=============================\n")
 
         # Execute plan
         execution_record = {}
@@ -96,11 +98,11 @@ class PySparkRunner(PipelineRunner):
             execution_record[stage.terminal_node.full_label] = result
 
         if pyspark_options.print_execution_plan:
-            print("=============================")
+            print("\n=============================")
             print(f"Execution Record for {pyspark_options.application_name}")
             print("=============================")
             for node_label, execution in execution_record.items():
                 print(f"{node_label}: {execution}")
-            print("\n")
+            print("=============================\n")
             
         return PysparkResult(state=PipelineState.DONE)
