@@ -1,3 +1,5 @@
+import glob
+import os
 import unittest
 import warnings
 from typing import Any, Callable, TypeVar
@@ -93,6 +95,38 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
         with self.pipeline as p:
             pcoll = p | beam.Create([1]) | beam.Map(double_key) | beam.GroupByKey()
             assert_that(pcoll, equal_to([(2, [1])]))
+
+    def test_write(self):
+        # Test constants
+        test_output_dir = "/tmp/test/"
+        input_list = [1, 2, 3, 4, 10]
+        expected_values = [str((v * 2, [v])) for v in input_list]
+
+        # Clean out the /tmp/test/ dir
+        if os.path.exists(test_output_dir):
+            for file in glob.glob(os.path.join(test_output_dir, '*')):
+                os.remove(file)
+
+        def double_key(x):
+            return x * 2, x
+
+        # Run pipeline
+        with self.pipeline as p:
+            p | beam.Create(input_list) | beam.Map(double_key) | beam.GroupByKey() | "write test" >> beam.io.WriteToText(test_output_dir)
+
+        # Check results
+        output_files = glob.glob(os.path.join(test_output_dir, '*'))
+        all_contents = []
+        for output_file in output_files:
+            with open(output_file, 'r') as file:
+                contents = file.readlines()
+                all_contents.extend(contents)
+        all_contents = [line.strip() for line in all_contents]
+
+        for expected in expected_values:
+            self.assertIn(expected, all_contents)
+
+        
 
 
 if __name__ == '__main__':

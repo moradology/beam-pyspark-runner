@@ -3,6 +3,7 @@ from typing import List
 
 from pyspark.sql import SparkSession
 
+import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.runners.runner import PipelineResult, PipelineRunner, PipelineState
 
@@ -39,10 +40,10 @@ class PySparkOptions(PipelineOptions):
                             help="Name of the PySpark application",
                             default="BeamPySparkApp")
         parser.add_argument("--print_execution_plan",
-                            action="store_true",
+                            action="store_false",
                             help="Flag to print a description of this pipeline's execution")
         parser.add_argument("--debug",
-                            action="store_false",
+                            action="store_true",
                             help="Flag to print stuff for debugging")
 
 
@@ -51,7 +52,7 @@ class PySparkRunner(PipelineRunner):
 
     def run_pipeline(self, pipeline, options):
         pyspark_options = options.view_as(PySparkOptions)
-
+        
         # Handle necessary AST overrides
         pipeline.replace_all(pyspark_overrides)
 
@@ -87,7 +88,9 @@ class PySparkRunner(PipelineRunner):
         dependencies = {}
         evaluator = RDDEvaluator(eval_ctx.nodes_to_cache)
         spark = SparkSession.builder.appName(pyspark_options.application_name).getOrCreate()
-        for stage in execution_plan.topologically_ordered():
+        for idx, stage in enumerate(execution_plan.topologically_ordered()):
+            print(f"Beginning stage {idx + 1} of {len(execution_plan.stages)}")
+            print(f"Beginning evaluation of terminal node {stage.terminal_node}")
             # If results later needed as side-inputs, save them. Else, avoid materializing results to driver
             if stage.terminal_node in execution_plan.all_dependencies:
                 result = evaluator.evaluate_node(stage.terminal_node, spark.sparkContext, dependencies).collect()
@@ -96,6 +99,8 @@ class PySparkRunner(PipelineRunner):
                 evaluator.evaluate_node(stage.terminal_node, spark.sparkContext, dependencies).foreach(lambda x: x)
                 result = f"Side effecting result calculated for {stage.terminal_node}"
             execution_record[stage.terminal_node.full_label] = result
+            print(f"Completed stage {idx + 1} of {len(execution_plan.stages)}")
+            print(f"Completed evaluation of terminal node {stage.terminal_node}")
 
         if pyspark_options.print_execution_plan:
             print("\n=============================")

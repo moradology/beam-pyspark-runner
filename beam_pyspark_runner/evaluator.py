@@ -21,7 +21,7 @@ class RDDEvaluator(object):
             evaluated = self.result_cache[node_label]
         else:
             evaluator_fn = get_eval_fn(applied_ptransform)
-            if not [input for input in applied_ptransform.inputs if not isinstance(input, pvalue.PBegin)]: # root
+            if not [input for input in applied_ptransform.inputs if not isinstance(input, pvalue.PBegin)]: # this is root
                 evaluated = evaluator_fn(applied_ptransform, None, sc, side_inputs=dependencies)
             else:
                 eval_args = [self.evaluate_node(input.producer, sc, dependencies) for input in applied_ptransform.inputs]

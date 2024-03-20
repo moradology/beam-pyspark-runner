@@ -1,9 +1,13 @@
 import math
 from typing import Any, Callable, List, Optional
 
+from apache_beam import pvalue
 from apache_beam.pipeline import AppliedPTransform
+from apache_beam.internal import util
 from apache_beam.transforms import core
 from pyspark import RDD, SparkContext
+from pyspark.broadcast import Broadcast
+
 
 from .overrides import _Create, _GroupByKey, _CombinePerKey, _ReadFromText
 
@@ -25,11 +29,50 @@ def eval_ParDo(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: S
     assert len(eval_args) == 1, "ParDo expects input of length 1"
     transform = applied_transform.transform
     rdd = eval_args[0]
-    broadcast_args = [sc.broadcast(side_inputs[si.pvalue.producer]) for si in applied_transform.side_inputs]
-    def apply_with_side_input(x):
-        broadcast_values = [broadcast.value for broadcast in broadcast_args]
-        return transform.fn.process(x, *broadcast_values, **transform.kwargs)
-    return rdd.flatMap(apply_with_side_input)
+
+    # Handle side inputs
+    broadcast_args = []
+    for si in applied_transform.side_inputs:
+        if isinstance(si, pvalue._UnpickledSideInput):
+            view_fn = si._data.view_fn
+            broadcast_args.append(sc.broadcast(view_fn(side_inputs[si.pvalue.producer])))
+        elif isinstance(si, pvalue.AsSingleton):
+            broadcast_args.append(sc.broadcast(side_inputs[si.pvalue.producer][0]))
+        elif isinstance(si, pvalue.AsIter) or isinstance(si, pvalue.AsList):
+            broadcast_args.append(sc.broadcast(side_inputs[si.pvalue.producer]))
+        else:
+            raise NotImplementedError("Singleton, Iter, and List side inputs supported here")
+    full_args, full_kwargs = util.insert_values_in_args(transform.args, transform.kwargs, broadcast_args)
+
+    def apply_with_side_input(partition_iter):
+        # Deserialize broadcast vars
+        broadcasted_args = [value.value if isinstance(value, Broadcast) else value for value in full_args]
+        broadcasted_kwargs = {key: value.value if isinstance(value, Broadcast) else value for key, value in full_kwargs.items()}
+
+        # Fine. We'll accomodate the bizarre DoFn lifecycle.
+        transform.fn.setup()
+        transform.fn.start_bundle()
+        processed_elements = []
+
+        # Sometimes results are `None`. Sometimes, they are generators.
+        for elem in partition_iter:
+            elem_result = transform.fn.process(elem, *broadcasted_args, **broadcasted_kwargs)
+            if elem_result is None:
+                processed_elements.append(elem_result)
+            else:
+                for processed in elem_result:
+                    processed_elements.append(processed)
+
+        # The DoFn lifecycle can also spit out results after things are finished. Don't blame me.
+        finish_bundle_generator = transform.fn.finish_bundle()
+        if finish_bundle_generator:
+            for finish_res in finish_bundle_generator:
+                processed_elements.append(finish_res.value)
+        transform.fn.teardown()
+
+        return iter(processed_elements)
+
+    return rdd.mapPartitions(apply_with_side_input)
 
 def eval_Flatten(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
     return sc.union(eval_args)

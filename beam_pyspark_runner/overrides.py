@@ -70,7 +70,10 @@ class _CombinePerKey(apache_beam.PTransform):
 
   def expand(self, pcoll):
     return apache_beam.pvalue.PCollection.from_(pcoll)
-
+  
+# =================
+# Replacement logic
+# =================
 class CreateOverride(PTransformOverride):
     def matches(self, applied_ptransform: AppliedPTransform) -> bool:
         return isinstance(applied_ptransform.transform, apache_beam.Create)

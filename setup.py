@@ -6,6 +6,6 @@ setup(
     packages=find_packages(),
     install_requires=[
         "apache-beam==2.53.0",
-        "pyspark=3.5.1"
+        "pyspark==3.5.1"
     ],
 )
