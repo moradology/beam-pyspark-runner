@@ -38,10 +38,14 @@ def eval_ParDo(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: S
             broadcast_args.append(sc.broadcast(view_fn(side_inputs[si.pvalue.producer])))
         elif isinstance(si, pvalue.AsSingleton):
             broadcast_args.append(sc.broadcast(side_inputs[si.pvalue.producer][0]))
-        elif isinstance(si, pvalue.AsIter) or isinstance(si, pvalue.AsList):
+        elif isinstance(si, pvalue.AsIter):
             broadcast_args.append(sc.broadcast(side_inputs[si.pvalue.producer]))
+        elif isinstance(si, pvalue.AsList):
+            broadcast_args.append(sc.broadcast(list(side_inputs[si.pvalue.producer])))
+        elif isinstance(si, pvalue.AsDict):
+            broadcast_args.append(sc.broadcast(dict(side_inputs[si.pvalue.producer])))
         else:
-            raise NotImplementedError("Singleton, Iter, and List side inputs supported here")
+            raise NotImplementedError("Singleton, Dict, Iter, and List side inputs supported here")
     full_args, full_kwargs = util.insert_values_in_args(transform.args, transform.kwargs, broadcast_args)
 
     def apply_with_side_input(partition_iter):

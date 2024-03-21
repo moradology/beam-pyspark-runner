@@ -126,6 +126,24 @@ class PySparkRunnerRunPipelineTest(unittest.TestCase):
         for expected in expected_values:
             self.assertIn(expected, all_contents)
 
+    def test_dict_side_input(self):
+        class UseMultimap(beam.DoFn):
+            def process(self, element, side_input_multimap):
+                # 'element' is a key to look up in the multimap 'side_input_multimap'
+                values_for_key = side_input_multimap.get(element, [])
+                for value in values_for_key:
+                    yield f"{element}: {value}"
+
+        with self.pipeline as p:
+            side_input_multimap = p | "Create Side Input" >> beam.Create([("key1", ["value1a", "value1b"]), ("key2", ["value2a"])])
+            side_input_dict = beam.pvalue.AsDict(side_input_multimap)
+
+            pcoll = (
+                p | "Create Elements" >> beam.Create(["key1", "key2"])
+                | "Use Multimap" >> beam.ParDo(UseMultimap(), side_input_multimap=side_input_dict)
+            )
+            assert_that(pcoll, equal_to(["key1: value1a", "key1: value1b", "key2: value2a"]))
+
         
 
 
