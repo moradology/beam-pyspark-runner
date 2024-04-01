@@ -24,11 +24,12 @@ class EvalContext(object):
         self.child_map = context_visitor.child_map
         self.producer_map = self.create_producer_map(self.child_map)
         self.nodes_to_cache = self.get_nodes_to_cache(self.child_map)
+        self.side_input_producers = set(context_visitor.side_input_producers)
 
     @property
     def leaves(self):
-        return [aptrans for label, aptrans in self.applied_ptransforms.items() if not self.context_visitor.child_map[label]]
-
+        return set([aptrans for label, aptrans in self.applied_ptransforms.items() if not self.context_visitor.child_map[label]])
+    
     def get_node_for_label(self, label: str) -> AppliedPTransform:
         return self.context_visitor.ptransforms[label]
 

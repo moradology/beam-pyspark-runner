@@ -64,8 +64,11 @@ class PySparkRunner(PipelineRunner):
         pipeline.visit(context_visitor)
         eval_ctx = EvalContext(context_visitor)
 
+        leaves = eval_ctx.leaves
+        side_input_producers = eval_ctx.side_input_producers
+        stage_nodes = leaves | side_input_producers
         # Construct plan for execution
-        execution_plan = PysparkPlan([PysparkStage.from_terminal_node(leaf) for leaf in eval_ctx.leaves])
+        execution_plan = PysparkPlan([PysparkStage.from_node(node) for node in stage_nodes])
 
         # Optionally print out a description of all nodes
         if pyspark_options.debug:

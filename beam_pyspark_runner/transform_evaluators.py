@@ -12,27 +12,27 @@ from pyspark.broadcast import Broadcast
 from .overrides import _Create, _GroupByKey, _CombinePerKey, _ReadFromText
 
 
-def eval_Create(applied_transform: AppliedPTransform, eval_args: None, sc: SparkContext, side_inputs={}) -> RDD:
+def eval_Create(applied_ptransform: AppliedPTransform, eval_args: None, sc: SparkContext, side_inputs={}) -> RDD:
     assert eval_args is None, 'Create expects no input'
-    items = applied_transform.transform.values
+    items = applied_ptransform.transform.values
     num_partitions = max(1, math.ceil(math.sqrt(len(items)) / math.sqrt(100)))
     rdd = sc.parallelize(items, num_partitions)
     return rdd
 
-def eval_ReadFromText(applied_transform: AppliedPTransform, eval_args: None, sc: SparkContext, side_inputs={}) -> RDD:
+def eval_ReadFromText(applied_ptransform: AppliedPTransform, eval_args: None, sc: SparkContext, side_inputs={}) -> RDD:
     assert eval_args is None, 'ReadFromText expects no input'
-    file_path = applied_transform.transform.values
+    file_path = applied_ptransform.transform.values
     rdd = sc.textFile(file_path)
     return rdd
 
-def eval_ParDo(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
+def eval_ParDo(applied_ptransform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
     assert len(eval_args) == 1, "ParDo expects input of length 1"
-    transform = applied_transform.transform
+    transform = applied_ptransform.transform
     rdd = eval_args[0]
 
     # Handle side inputs
     broadcast_args = []
-    for si in applied_transform.side_inputs:
+    for si in applied_ptransform.side_inputs:
         if isinstance(si, pvalue._UnpickledSideInput):
             view_fn = si._data.view_fn
             broadcast_args.append(sc.broadcast(view_fn(side_inputs[si.pvalue.producer])))
@@ -78,18 +78,18 @@ def eval_ParDo(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: S
 
     return rdd.mapPartitions(apply_with_side_input)
 
-def eval_Flatten(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
+def eval_Flatten(applied_ptransform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
     return sc.union(eval_args)
 
-def eval_GroupByKey(applied_transform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
+def eval_GroupByKey(applied_ptransform: AppliedPTransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
     assert len(eval_args) == 1, "ParDo expects input of length 1"
     rdd = eval_args[0]
     return rdd.groupByKey().mapValues(list)
 
-def eval_CombinePerKey(applied_transform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
+def eval_CombinePerKey(applied_ptransform, eval_args: List[RDD], sc: SparkContext, side_inputs={}):
     assert len(eval_args) == 1, "CombinePerKey expects input of length 1"
     rdd = eval_args[0]
-    combine_fn = applied_transform.transform._combine_fn
+    combine_fn = applied_ptransform.transform._combine_fn
     # Coerce the beam way of doing things into spark's preferred merge format
     binary_merge = lambda x, y: combine_fn.merge_accumulators([x, y])
     result_rdd = rdd.aggregateByKey(
@@ -100,7 +100,7 @@ def eval_CombinePerKey(applied_transform, eval_args: List[RDD], sc: SparkContext
     return result_rdd
 
 
-def NoOp(applied_transform: AppliedPTransform, eval_args: Any, sc: SparkContext, side_inputs={}):
+def NoOp(applied_ptransform: AppliedPTransform, eval_args: Any, sc: SparkContext, side_inputs={}):
     return eval_args[0]
 
 

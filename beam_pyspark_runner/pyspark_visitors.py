@@ -19,6 +19,8 @@ class EvalContextPipelineVisitor(PipelineVisitor):
         self.child_map = {}
         # Map transform labels to a list of their parent's labels
         self.producer_map = {}
+        # Set of all side-input dependency nodes later used to plan stages
+        self.side_input_producers = set()
 
     def visit_transform(self, applied_ptransform: AppliedPTransform) -> None:
         # self.applied_ptransforms
@@ -30,3 +32,7 @@ class EvalContextPipelineVisitor(PipelineVisitor):
         self.child_map.setdefault(transform_label, [])
         for producer_label in input_producer_labels:
             self.child_map.setdefault(producer_label, []).append(transform_label)
+
+        # self.side_input_dependencies
+        for si in applied_ptransform.side_inputs:
+            self.side_input_producers.add(si.pvalue.producer)

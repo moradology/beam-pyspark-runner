@@ -19,7 +19,7 @@ class PysparkStage:
         return hash(self.terminal_node)
 
     @classmethod
-    def from_terminal_node(cls, node: AppliedPTransform):
+    def from_node(cls, node: AppliedPTransform):
         def find_side_input_dependencies(node, current_deps=set()):
             for si in node.side_inputs:
                 current_deps.add(si.pvalue.producer)
@@ -42,7 +42,6 @@ class PysparkPlan:
     def topologically_ordered(self):
         in_degree = {stage: len(stage.side_input_dependencies) for stage in self.stages}
         ordered_stages = []
-
         queue = [stage for stage in self.stages if in_degree[stage] == 0]
 
         while queue:
