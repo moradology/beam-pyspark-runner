@@ -1,10 +1,14 @@
+import logging
 from dataclasses import dataclass
 from typing import List
 
 from apache_beam import pvalue
 from apache_beam.pipeline import AppliedPTransform
 
-@dataclass 
+logger = logging.getLogger(__name__)
+
+
+@dataclass
 class PysparkStage:
     terminal_node: AppliedPTransform
     side_input_dependencies: set
@@ -31,9 +35,13 @@ class PysparkStage:
                     if isinstance(pval, pvalue.PBegin):
                         continue
                     producer_node = pval.producer
-                    upstream_dependencies  = upstream_dependencies.union(find_side_input_dependencies(producer_node, current_deps))
+                    upstream_dependencies = upstream_dependencies.union(
+                        find_side_input_dependencies(producer_node, current_deps)
+                    )
                 return current_deps.union(upstream_dependencies)
+
         return PysparkStage(node, find_side_input_dependencies(node))
+
 
 @dataclass
 class PysparkPlan:
@@ -58,8 +66,21 @@ class PysparkPlan:
         if len(ordered_stages) == len(self.stages):
             return ordered_stages
         else:
-            raise ValueError("A cycle was detected in the graph, or there are unresolved dependencies.")
-        
+            raise ValueError(
+                "A cycle was detected in the graph, or there are unresolved dependencies."
+            )
+
     @property
     def all_dependencies(self):
         return set().union(*[stage.side_input_dependencies for stage in self.stages])
+
+    def log_execution_plan(self, application_name="Beam PySparkRunner Application"):
+        logger.info("\n=============================")
+        logger.info(f"Execution Plan for {application_name}")
+        logger.info("=============================")
+        for idx, stage in enumerate(self.topologically_ordered()):
+            logger.info(f"Stage {idx+1} of {len(self.stages)}")
+            logger.info(f"Calculate terminal node {stage.terminal_node}")
+            if stage.side_input_dependencies:
+                logger.info(f"  - With dependencies on {stage.side_input_dependencies}")
+        logger.info("=============================\n")

@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name="beam-pyspark-runner"
+description="An Apache Beam pipeline Runner built on Apache Spark's python API"
+classifiers=[
+        "Intended Audience :: Developers",
+        "Intended Audience :: Information Technology",
+        "Intended Audience :: Science/Research",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "License :: OSI Approved :: MIT License",
+    ]
+keywords=["virtualenv", "dependencies"]
+authors=[{ name = "Nathan Zimmerman", email = "npzimmerman@gmail.com"}]
+license= { text = "MIT" }
+requires-python=">=3.8"
+dependencies = ["apache-beam==2.53.0", "pyspark==3.5.1", "psutil==5.9.8"]
+dynamic = ["version", "readme"]
+
+[project.urls]
+homepage = "https://github.com/moradology/beam-pyspark-runner"
+repository = "https://github.com/moradology/beam-pyspark-runner.git"
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0",
+       "pytest-cov>=4.1.0"]
+lint = ["black>=23.9.1",
+        "isort>=5.13.0",
+        "flake8>=7.0.0",
+        "Flake8-pyproject>=1.2.3",
+        "mypy>=1.8.0",
+        "pre-commit>=3.4.0",
+        "pytest>=8.0.0",
+        "pytest-cov>=4.1.0",
+        "tox>=4.11.3"]
+
+[tool.setuptools.dynamic]
+version = { attr = "beam_pyspark_runner.version.__version__" }
+readme = {file = ["README.md"], content-type = "text/markdown"}
+
+[tool.setuptools.package-data]
+beam_pyspark_runner = ["*.typed"]
+
+[tool.setuptools.packages.find]
+include = ["beam_pyspark_runner*"]
+exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+addopts = "-sv --cov beam_pyspark_runner --cov-report xml --cov-report term-missing  --cov-fail-under 75"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.isort]
+profile = "black"
+known_first_party = "beam-pyspark-runner"
+known_third_party = []
+default_section = "THIRDPARTY"
+
+[tool.flake8]
+ignore = ["E501", "W503"]
+select = ["C","E","F","W","B","B950"]
+exclude = ["tests", ".venv", ".tox", ".git", ".mypy_cache"]
+max-line-length = 100

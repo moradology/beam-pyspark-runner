@@ -1,4 +1,5 @@
-from pprint import pprint 
+import logging
+from pprint import pformat
 
 from apache_beam.pipeline import AppliedPTransform
 
@@ -12,8 +13,14 @@ def applied_ptransform_context(applied_ptransform: AppliedPTransform):
         "side_inputs": applied_ptransform.side_inputs,
         "outputs": applied_ptransform.outputs.values(),
         "parent": applied_ptransform.parent.full_label,
-        "input_producers": [input.producer for input in applied_ptransform.inputs if input.producer is not None],
-        "input_producer_labels": [input.producer.full_label for input in applied_ptransform.inputs if input.producer is not None]
+        "input_producers": [
+            input.producer for input in applied_ptransform.inputs if input.producer is not None
+        ],
+        "input_producer_labels": [
+            input.producer.full_label
+            for input in applied_ptransform.inputs
+            if input.producer is not None
+        ],
     }
 
 
@@ -28,8 +35,14 @@ class EvalContext(object):
 
     @property
     def leaves(self):
-        return set([aptrans for label, aptrans in self.applied_ptransforms.items() if not self.context_visitor.child_map[label]])
-    
+        return set(
+            [
+                aptrans
+                for label, aptrans in self.applied_ptransforms.items()
+                if not self.context_visitor.child_map[label]
+            ]
+        )
+
     def get_node_for_label(self, label: str) -> AppliedPTransform:
         return self.context_visitor.ptransforms[label]
 
@@ -42,12 +55,26 @@ class EvalContext(object):
         return producer_map
 
     def get_nodes_to_cache(self, child_map):
-        nodes_with_multiple_children = [node for node, children in child_map.items() if len(children) > 1]
+        nodes_with_multiple_children = [
+            node for node, children in child_map.items() if len(children) > 1
+        ]
         return nodes_with_multiple_children
 
-    def print_node_contexts(self):
-        print("===========================")
-        print("ALL APPLIED TRANSFORMS")
-        print("===========================")
-        pprint({full_label: applied_ptransform_context(applied_ptransform) for full_label, applied_ptransform in self.applied_ptransforms.items()})
-        print("===========================")
+    def log_node_contexts(self):
+        logger = logging.getLogger(
+            __name__
+        )  # It's good practice to use __name__ to get the appropriate logger
+
+        logger.debug("===========================")
+        logger.debug("ALL APPLIED TRANSFORMS")
+        logger.debug("===========================")
+        # Using pformat to get the formatted string from pprint
+        logger.debug(
+            pformat(
+                {
+                    full_label: applied_ptransform_context(applied_ptransform)
+                    for full_label, applied_ptransform in self.applied_ptransforms.items()
+                }
+            )
+        )
+        logger.debug("===========================")

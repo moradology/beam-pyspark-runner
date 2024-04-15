@@ -1,17 +1,19 @@
-import dataclasses
-from typing import List
+import logging
 
-from pyspark.sql import SparkSession
-
-import apache_beam as beam
 from apache_beam.options.pipeline_options import PipelineOptions
 from apache_beam.runners.runner import PipelineResult, PipelineRunner, PipelineState
+from pyspark.sql import SparkSession
 
 from .eval_context import EvalContext
 from .evaluator import RDDEvaluator
 from .execution_plan import PysparkPlan, PysparkStage
 from .overrides import pyspark_overrides
-from .pyspark_visitors import EvalContextPipelineVisitor, VerifyNoCrossLanguageTransforms
+from .pyspark_visitors import (
+    EvalContextPipelineVisitor,
+    VerifyNoCrossLanguageTransforms,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class PysparkResult(PipelineResult):
@@ -29,22 +31,18 @@ class PysparkResult(PipelineResult):
         raise NotImplementedError("metrics later")
 
 
-
 class PySparkOptions(PipelineOptions):
     """TODO: Any spark-specific options we want to include"""
+
     @classmethod
     def _add_argparse_args(cls, parser):
         # Add an argument for specifying the application name
-        parser.add_argument("--application_name",
-                            type=str,
-                            help="Name of the PySpark application",
-                            default="BeamPySparkApp")
-        parser.add_argument("--print_execution_plan",
-                            action="store_false",
-                            help="Flag to print a description of this pipeline's execution")
-        parser.add_argument("--debug",
-                            action="store_true",
-                            help="Flag to print stuff for debugging")
+        parser.add_argument(
+            "--application_name",
+            type=str,
+            help="Name of the PySpark application",
+            default="BeamPySparkApp",
+        )
 
 
 class PySparkRunner(PipelineRunner):
@@ -52,7 +50,7 @@ class PySparkRunner(PipelineRunner):
 
     def run_pipeline(self, pipeline, options):
         pyspark_options = options.view_as(PySparkOptions)
-        
+
         # Handle necessary AST overrides
         pipeline.replace_all(pyspark_overrides)
 
@@ -70,21 +68,11 @@ class PySparkRunner(PipelineRunner):
         # Construct plan for execution
         execution_plan = PysparkPlan([PysparkStage.from_node(node) for node in stage_nodes])
 
-        # Optionally print out a description of all nodes
-        if pyspark_options.debug:
-            eval_ctx.print_node_contexts()
+        # log out a description of all nodes
+        eval_ctx.log_node_contexts()
 
-        # Optionally report on execution plan
-        if pyspark_options.print_execution_plan:
-            print("\n=============================")
-            print(f"Execution Plan for {pyspark_options.application_name}")
-            print("=============================")
-            for idx, stage in enumerate(execution_plan.topologically_ordered()):
-                print(f"Stage {idx+1} of {len(execution_plan.stages)}")
-                print(f"Calculate terminal node {stage.terminal_node}")
-                if stage.side_input_dependencies:
-                    print(f"  - With dependencies on {stage.side_input_dependencies}")
-            print("=============================\n")
+        # report on execution plan
+        execution_plan.log_execution_plan()
 
         # Execute plan
         execution_record = {}
@@ -92,25 +80,29 @@ class PySparkRunner(PipelineRunner):
         evaluator = RDDEvaluator(eval_ctx.nodes_to_cache)
         spark = SparkSession.builder.appName(pyspark_options.application_name).getOrCreate()
         for idx, stage in enumerate(execution_plan.topologically_ordered()):
-            print(f"Beginning stage {idx + 1} of {len(execution_plan.stages)}")
-            print(f"Beginning evaluation of terminal node {stage.terminal_node}")
+            logger.debug(f"Beginning stage {idx + 1} of {len(execution_plan.stages)}")
+            logger.debug(f"Beginning evaluation of terminal node {stage.terminal_node}")
             # If results later needed as side-inputs, save them. Else, avoid materializing results to driver
             if stage.terminal_node in execution_plan.all_dependencies:
-                result = evaluator.evaluate_node(stage.terminal_node, spark.sparkContext, dependencies).collect()
+                result = evaluator.evaluate_node(
+                    stage.terminal_node, spark.sparkContext, dependencies
+                ).collect()
                 dependencies[stage.terminal_node] = result
             else:
-                evaluator.evaluate_node(stage.terminal_node, spark.sparkContext, dependencies).foreach(lambda x: x)
+                evaluator.evaluate_node(
+                    stage.terminal_node, spark.sparkContext, dependencies
+                ).foreach(lambda x: x)
                 result = f"Side effecting result calculated for {stage.terminal_node}"
             execution_record[stage.terminal_node.full_label] = result
-            print(f"Completed stage {idx + 1} of {len(execution_plan.stages)}")
-            print(f"Completed evaluation of terminal node {stage.terminal_node}")
+            logger.debug(f"Completed stage {idx + 1} of {len(execution_plan.stages)}")
+            logger.debug(f"Completed evaluation of terminal node {stage.terminal_node}")
 
-        if pyspark_options.print_execution_plan:
-            print("\n=============================")
-            print(f"Execution Record for {pyspark_options.application_name}")
-            print("=============================")
-            for node_label, execution in execution_record.items():
-                print(f"{node_label}: {execution}")
-            print("=============================\n")
-            
+        # Report on execution record
+        logger.debug("\n=============================")
+        logger.debug(f"Execution Record for {pyspark_options.application_name}")
+        logger.debug("=============================")
+        for node_label, execution in execution_record.items():
+            logger.debug(f"{node_label}: {execution}")
+        logger.debug("=============================\n")
+
         return PysparkResult(state=PipelineState.DONE)
