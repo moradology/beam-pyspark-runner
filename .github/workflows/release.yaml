@@ -27,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: python -m pip install tox
 
-      - name: Release
+      - name: Build
         run: tox -e build
 
       - name: Upload release to TestPyPI
