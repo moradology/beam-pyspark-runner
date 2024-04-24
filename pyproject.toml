@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68.0"]
+requires = ["setuptools>=69.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -20,7 +20,7 @@ keywords=["virtualenv", "dependencies"]
 authors=[{ name = "Nathan Zimmerman", email = "npzimmerman@gmail.com"}]
 license= { text = "MIT" }
 requires-python=">=3.7"
-dependencies = ["apache-beam==2.48.0", "pyspark==3.4.3", "psutil==5.9.8"]
+dependencies = ["apache-beam==2.53.0", "pyspark==3.5.1", "psutil==5.9.8"]
 dynamic = ["version", "readme"]
 
 [project.urls]
